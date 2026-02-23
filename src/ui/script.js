@@ -447,6 +447,16 @@ document.addEventListener('DOMContentLoaded', () => {
           ['Why no entry?', entryReason]
         ];
 
+        // Blocker frequency summary (if available)
+        const bSum = statusData.blockerSummary;
+        if (bSum && Array.isArray(bSum.topBlockers) && bSum.topBlockers.length > 0) {
+          const tags = bSum.topBlockers
+            .slice(0, 5)
+            .map(b => `<span class="blocker-tag">${b.blocker} <strong>${b.pct}%</strong></span>`)
+            .join(' ');
+          rows.push(['Top blockers', `${tags} <span style="opacity:0.5">(${bSum.total} checks)</span>`]);
+        }
+
         statusMessage.innerHTML = `<table class="kv-table"><tbody>` +
           rows.map(([k, v]) => `<tr><td class="k">${k}</td><td class="v">${v}</td></tr>`).join('') +
           `</tbody></table>`;

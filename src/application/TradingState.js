@@ -62,6 +62,16 @@ export class TradingState {
 
     /** @type {number|null} Timestamp when circuit breaker was tripped */
     this.circuitBreakerTrippedAtMs = null;
+
+    // ── Blocker frequency tracking (for diagnostics) ──────────────
+    /** @type {Map<string, number>} normalized blocker key → count */
+    this._blockerCounts = new Map();
+
+    /** @type {number} total ticks where entry was evaluated */
+    this._totalEntryChecks = 0;
+
+    /** @type {number|null} timestamp of last blocker summary log */
+    this._lastBlockerLogAtMs = null;
   }
 
   // ─── MFE/MAE ─────────────────────────────────────────────────
@@ -239,5 +249,49 @@ export class TradingState {
       eligible,
       blockers,
     };
+  }
+
+  // ─── Blocker frequency tracking ──────────────────────────────
+
+  /**
+   * Record which blockers fired this tick for frequency analysis.
+   * @param {string[]} blockers
+   */
+  recordBlockers(blockers) {
+    this._totalEntryChecks++;
+    for (const b of blockers) {
+      const key = this._normalizeBlockerKey(b);
+      this._blockerCounts.set(key, (this._blockerCounts.get(key) || 0) + 1);
+    }
+  }
+
+  /**
+   * Get a summary of blocker frequencies, sorted by most frequent.
+   * @param {number} [topN=10]
+   * @returns {{ total: number, topBlockers: Array<{ blocker: string, count: number, pct: number }> }}
+   */
+  getBlockerSummary(topN = 10) {
+    const total = this._totalEntryChecks;
+    const entries = [...this._blockerCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, topN)
+      .map(([blocker, count]) => ({
+        blocker,
+        count,
+        pct: total > 0 ? Math.round((count / total) * 100) : 0,
+      }));
+    return { total, topBlockers: entries };
+  }
+
+  /**
+   * Normalize a blocker string to a stable key for frequency counting.
+   * Strips dynamic numeric values but keeps the blocker type.
+   * @param {string} b
+   * @returns {string}
+   */
+  _normalizeBlockerKey(b) {
+    return b
+      .replace(/\d+\.\d+/g, 'X')
+      .replace(/\d+/g, 'N');
   }
 }

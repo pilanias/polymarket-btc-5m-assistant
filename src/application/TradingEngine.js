@@ -184,6 +184,20 @@ export class TradingEngine {
     this.state.setEntryStatus(blockers.length === 0, blockers);
     this.lastEntryStatus = this.state.lastEntryStatus;
 
+    // Record blockers for frequency tracking + periodic console summary
+    this.state.recordBlockers(blockers);
+    const now = Date.now();
+    if (blockers.length > 0 &&
+        (this.state._lastBlockerLogAtMs === null || now - this.state._lastBlockerLogAtMs >= 30_000)) {
+      this.state._lastBlockerLogAtMs = now;
+      const summary = this.state.getBlockerSummary(5);
+      console.log(
+        `[${mode} engine] Entry blocked (${summary.total} checks). Top blockers: ` +
+        summary.topBlockers.map(b => `${b.blocker} (${b.pct}%)`).join(' | '),
+      );
+      console.log(`[${mode} engine] Current blockers: ${blockers.join('; ')}`);
+    }
+
     if (blockers.length > 0) {
       return; // Blocked
     }

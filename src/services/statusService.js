@@ -22,6 +22,7 @@ export async function assembleStatus() {
 
   // Entry debug from unified engine
   const entryDebug = engine?.lastEntryStatus ?? null;
+  const blockerSummary = engine?.state?.getBlockerSummary?.(10) ?? null;
 
   const summary = ledgerData.summary ?? recalculateSummary(ledgerData.trades ?? []);
 
@@ -52,6 +53,7 @@ export async function assembleStatus() {
     tradingEnabled: engine?.tradingEnabled ?? false,
     openTrade,
     entryDebug,
+    blockerSummary,
     ledgerSummary: summary,
     balance: { starting, realized, balance },
     paperTrading: {

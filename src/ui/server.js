@@ -13,6 +13,7 @@ import { assembleStatus } from '../services/statusService.js';
 import { fetchLiveTrades, fetchLiveOpenOrders, fetchLivePositions, fetchLiveAnalytics } from '../services/liveService.js';
 import { TradingState } from '../application/TradingState.js';
 import { CONFIG } from '../config.js';
+import { getPacificTimeInfo } from '../domain/entryGate.js';
 
 import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
@@ -264,6 +265,63 @@ app.get('/api/metrics', (req, res) => {
   } catch (error) {
     console.error('Error fetching metrics:', error.message);
     res.status(500).json(fail('Failed to fetch metrics.'));
+  }
+});
+
+app.get('/api/diagnostics', (req, res) => {
+  try {
+    const engine = globalThis.__tradingEngine;
+    if (!engine) return res.status(503).json(fail('Engine not initialized'));
+
+    const state = engine.state;
+    const summary = state?.getBlockerSummary?.(25) ?? { total: 0, topBlockers: [] };
+    const currentBlockers = engine.lastEntryStatus?.blockers ?? [];
+    const config = engine.config || {};
+
+    const { isWeekend, wd, hour } = getPacificTimeInfo();
+    const weekendTightening = Boolean(config.weekendTighteningEnabled ?? true) && isWeekend;
+
+    res.json(ok({
+      blockerSummary: summary,
+      currentBlockers,
+      tradingEnabled: engine.tradingEnabled,
+      mode: engine.executor?.getMode?.() ?? 'unknown',
+      weekendTightening,
+      dayOfWeek: wd,
+      hourPt: hour,
+      effectiveThresholds: {
+        minLiquidity: weekendTightening
+          ? (config.weekendMinLiquidity ?? config.minLiquidity ?? 500)
+          : (config.minLiquidity ?? 500),
+        maxSpread: weekendTightening
+          ? (config.weekendMaxSpread ?? config.maxSpread ?? 0.012)
+          : (config.maxSpread ?? 0.012),
+        minModelMaxProb: weekendTightening
+          ? (config.weekendMinModelMaxProb ?? config.minModelMaxProb ?? 0.53)
+          : (config.minModelMaxProb ?? 0.53),
+        minRangePct20: weekendTightening
+          ? (config.weekendMinRangePct20 ?? config.minRangePct20 ?? 0.0012)
+          : (config.minRangePct20 ?? 0.0012),
+        maxEntryPolyPrice: config.maxEntryPolyPrice ?? 0.0055,
+        minBtcImpulsePct1m: config.minBtcImpulsePct1m ?? 0.0003,
+        noTradeRsiRange: [config.noTradeRsiMin ?? 30, config.noTradeRsiMax ?? 45],
+        minCandlesForEntry: config.minCandlesForEntry ?? 12,
+        noEntryFinalMinutes: config.noEntryFinalMinutes ?? 1.5,
+        probThresholds: {
+          early: config.minProbEarly ?? 0.52,
+          mid: (config.minProbMid ?? 0.53) + (config.midProbBoost ?? 0.01) + (weekendTightening ? (config.weekendProbBoost ?? 0.03) : 0),
+          late: config.minProbLate ?? 0.55,
+        },
+        edgeThresholds: {
+          early: config.edgeEarly ?? 0.02,
+          mid: (config.edgeMid ?? 0.03) + (config.midEdgeBoost ?? 0.01) + (weekendTightening ? (config.weekendEdgeBoost ?? 0.03) : 0),
+          late: config.edgeLate ?? 0.05,
+        },
+      },
+    }));
+  } catch (error) {
+    console.error('Error fetching diagnostics:', error.message);
+    res.status(500).json(fail('Failed to fetch diagnostics.'));
   }
 });
 

@@ -4,7 +4,17 @@
 
 ### 2026-02-23
 
-#### Fix: Instance Locking with Seeking Mode — Prevent Multi-Instance Oscillation
+#### Feat: Entry Blocker Diagnostics — Frequency Tracking, Server Logging, UI Display
+- **Problem:** Paper trading was enabled and ACTIVE but no trades executed. The entry gate has 25 conditions that ALL must pass simultaneously, and there was no visibility into which blockers fire most often. The "Why no entry?" field only showed the current tick's snapshot.
+- **Solution:**
+  - **TradingState**: Added `_blockerCounts` map with `recordBlockers()` and `getBlockerSummary()` methods. Normalizes blocker keys (strips dynamic numbers) so similar blockers group under one frequency counter.
+  - **TradingEngine**: Calls `recordBlockers()` every tick. Logs top 5 blockers with percentages every 30s to server console (avoids log spam from 1s main loop).
+  - **Status API**: Exposed `blockerSummary` in `/api/status` response with `{ total, topBlockers: [{ blocker, count, pct }] }`.
+  - **UI**: Added "Top blockers" row below "Why no entry?" showing up to 5 most frequent blockers as red pill-style tags with percentage hit rates.
+  - **Diagnostics endpoint**: New `GET /api/diagnostics` returns full blocker summary, effective thresholds (with weekend/phase boosts applied), and current market conditions (day of week, weekend tightening active/inactive).
+- **Files**: `TradingState.js`, `TradingEngine.js`, `statusService.js`, `server.js`, `script.js`, `style.css`
+
+#### Fix: Filter Stale "Trading disabled" Blocker in Entry Debug
 - **Root cause:** On production (DigitalOcean), multiple server instances run behind a load balancer. POSTs (e.g., `/api/trading/start`) go to one instance, but status polls may lock to another, causing inconsistent responses and stale data (e.g., "Trading disabled" stuck forever).
 - **Fix:** Frontend locks to the first server `_instanceId` it sees. After any user action POST (Start/Stop/Mode), it enters **seeking mode** — unlocks and polls until it finds an instance whose `tradingEnabled` AND `mode` both match the local UI state, then re-locks to that instance. If the locked instance dies (5 consecutive foreign responses), the fallback also enters seeking mode instead of blindly switching — so a LIVE instance can never replace a PAPER lock. First-poll locking also validates mode+trading after initial sync.
 - **Seeking timeout:** If two POSTs (e.g., mode switch + start) land on different instances, no single instance may match both `tradingEnabled` AND `mode` — causing seeking to loop forever and the UI to freeze. After 20 polls (~30s), seeking mode times out and accepts any instance. The UI remains correct because the dropdown is the source of truth for all rendering — only server-provided data fields (balance, entryDebug, openTrade) may briefly reflect a mismatched instance, which is better than showing no data at all.
