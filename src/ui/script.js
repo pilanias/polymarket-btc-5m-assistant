@@ -365,13 +365,23 @@ document.addEventListener('DOMContentLoaded', () => {
           : 'N/A';
 
         const entryDbg = statusData.entryDebug || null;
-        const entryReason = entryDbg
-          ? (entryDbg.eligible
-            ? 'ELIGIBLE (will enter if Rec=ENTER + thresholds hit)'
-            : (Array.isArray(entryDbg.blockers) && entryDbg.blockers.length
-              ? entryDbg.blockers.join('; ')
-              : 'Not eligible'))
-          : 'N/A';
+        const locallyActive = tradingStatusEl?.textContent === 'ACTIVE';
+        let entryReason;
+        if (!entryDbg) {
+          entryReason = locallyActive ? 'Enabled — waiting for server sync…' : 'N/A';
+        } else if (entryDbg.eligible) {
+          entryReason = 'ELIGIBLE (will enter if Rec=ENTER + thresholds hit)';
+        } else {
+          let blockers = Array.isArray(entryDbg.blockers) ? [...entryDbg.blockers] : [];
+          // If the user enabled trading locally but the polled instance
+          // hasn't received the command, filter out the stale blocker.
+          if (locallyActive) {
+            blockers = blockers.filter(b => b !== 'Trading disabled');
+          }
+          entryReason = blockers.length
+            ? blockers.join('; ')
+            : (locallyActive ? 'Enabled — waiting for server sync…' : 'Not eligible');
+        }
 
         const rows = [
           ['Mode', `<strong>${mode}</strong> ${tradingStatusEl?.textContent === 'ACTIVE' ? '<span style="color:var(--good)">ACTIVE</span>' : '<span style="color:var(--bad)">STOPPED</span>'}`],
