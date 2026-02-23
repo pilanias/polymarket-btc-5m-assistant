@@ -321,8 +321,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (_seekingInstance) {
         const localEnabled = tradingStatusEl?.textContent === 'ACTIVE';
         const serverEnabled = statusData.tradingEnabled ?? false;
-        if (localEnabled === serverEnabled) {
-          // Found the instance that received our command — lock to it
+        const localMode = (modeSelect?.value || 'paper').toUpperCase();
+        const serverMode = (statusData.mode || 'PAPER').toUpperCase();
+        if (localEnabled === serverEnabled && localMode === serverMode) {
+          // Found the instance that matches our local state — lock to it
           _lockedInstanceId = respInstanceId;
           _foreignInstanceCount = 0;
           _seekingInstance = false;
