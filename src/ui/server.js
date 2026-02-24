@@ -32,9 +32,9 @@ function fail(msg) { return { success: false, error: msg }; }
 // ── Trade Store (SQLite) initialization ──────────────────────────────
 let _tradeStoreAvailable = false;
 
-function initTradeStore() {
+async function initTradeStore() {
   try {
-    const { getTradeStore } = require('../infrastructure/persistence/tradeStore.js');
+    const { getTradeStore } = await import('../infrastructure/persistence/tradeStore.js');
     const store = getTradeStore();
 
     // Expose for global access by backtestService etc
@@ -54,30 +54,13 @@ function initTradeStore() {
     }
 
     _tradeStoreAvailable = true;
+    console.log('[TradeStore] SQLite initialized successfully');
     return store;
   } catch (err) {
     console.warn('[TradeStore] SQLite not available, using JSON ledger fallback:', err.message);
     _tradeStoreAvailable = false;
     return null;
   }
-}
-
-/**
- * Lazy dynamic import for ESM compatibility.
- * Falls back to null if better-sqlite3 not installed.
- */
-function require(modulePath) {
-  // This is a sync ESM workaround - we pre-load via initTradeStore
-  // and cache the store on globalThis. This function name shadows the
-  // CommonJS require but is only used for the trade store import.
-  if (modulePath.includes('tradeStore')) {
-    // Return a module-like object with the cached store factory
-    if (globalThis.__tradeStore_getTradeStore) {
-      return { getTradeStore: globalThis.__tradeStore_getTradeStore };
-    }
-    throw new Error('TradeStore not initialized');
-  }
-  throw new Error(`require() not available for ${modulePath}`);
 }
 
 /**
@@ -955,8 +938,8 @@ export function startUIServer() {
   initializeLedger().catch((e) => console.error('UI server (paper) ledger init failed:', e.message));
   initializeLiveLedger().catch((e) => console.error('UI server (live) ledger init failed:', e.message));
 
-  // Initialize SQLite trade store and migrate JSON data
-  initTradeStore();
+  // Initialize SQLite trade store and migrate JSON data (async — sets _tradeStoreAvailable when done)
+  initTradeStore().catch(err => console.error('[TradeStore] Init failed:', err.message));
 
   console.log(`Starting UI server on ${host}:${port}...`);
   const server = app.listen(port, host, () => {
