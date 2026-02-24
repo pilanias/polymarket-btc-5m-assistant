@@ -3,6 +3,7 @@ import { CONFIG } from '../config.js';
 import { initializeLedger, getLedger, recalculateSummary, getOpenTrade } from '../paper_trading/ledger.js';
 import { fetchCollateralBalance } from '../live_trading/clob.js';
 import { getLiveLedger } from '../live_trading/ledger.js';
+import { getPacificTimeInfo } from '../domain/entryGate.js';
 
 // Diagnostic: unique ID per process instance + boot timestamp.
 // If the UI sees different instanceIds across consecutive polls, there are
@@ -82,7 +83,14 @@ export async function assembleStatus() {
       fees: engine?.executor?.feeService?.getSnapshot?.() ?? null,
       approvals: engine?.executor?.approvalService?.getStatus?.() ?? null,
     },
-    entryThresholds: {
+    entryThresholds: (() => {
+      const { isWeekend, wd, hour } = getPacificTimeInfo();
+      return {
+      // Schedule context (Pacific time)
+      isWeekend,
+      pacificDay: wd,
+      pacificHour: hour,
+      weekendTighteningActive: isWeekend && Boolean(CONFIG.paperTrading.weekendTighteningEnabled ?? true),
       // Prob thresholds (MID includes midProbBoost)
       minProbEarly: CONFIG.paperTrading.minProbEarly ?? 0.52,
       minProbMid: (CONFIG.paperTrading.minProbMid ?? 0.53) + (CONFIG.paperTrading.midProbBoost ?? 0.01),
@@ -113,7 +121,8 @@ export async function assembleStatus() {
       lossCooldownSeconds: CONFIG.paperTrading.lossCooldownSeconds ?? 30,
       winCooldownSeconds: CONFIG.paperTrading.winCooldownSeconds ?? 30,
       noEntryFinalMinutes: CONFIG.paperTrading.noEntryFinalMinutes ?? 1.5,
-    },
+      }; // end return
+    })(),
     killSwitch: engine?.state?.getKillSwitchStatus?.(
       engine?.config?.maxDailyLossUsd ?? CONFIG.liveTrading?.maxDailyLossUsd ?? CONFIG.paperTrading?.maxDailyLossUsd ?? null,
     ) ?? null,

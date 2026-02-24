@@ -145,6 +145,7 @@ export class PaperExecutor extends OrderExecutor {
     };
 
     await addTrade(trade);
+    globalThis.__syncTradeToStore?.(trade, 'paper');
     this.openTrade = trade;
 
     return {
@@ -234,6 +235,7 @@ export class PaperExecutor extends OrderExecutor {
     }
 
     await updateTrade(trade.id, trade);
+    globalThis.__syncTradeToStore?.(trade, 'paper');
     this.openTrade = null;
 
     return {

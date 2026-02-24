@@ -2,6 +2,20 @@
 
 All notable changes to Polymarket BTC 5m Assistant are documented in this file.
 
+## [1.0.1] - 2026-02-24
+
+### Fixed
+
+- **SQLite fallback banner false positive**: `initTradeStore()` in `server.js` used a hand-rolled `require()` shim that was circularly dependent on `globalThis.__tradeStore_getTradeStore` — which it was itself supposed to set. First call always threw `"TradeStore not initialized"`, setting `_tradeStoreAvailable = false` regardless of whether `better-sqlite3` was installed. Fixed by replacing the shim with a real `await import()` and making `initTradeStore()` async.
+- **Trades table / Equity Curve / PnL today / Analytics not updating after trades**: `PaperExecutor` wrote trades to the JSON ledger but never called `syncTradeToStore()`. Since `/api/trades` and `/api/analytics` prefer SQLite when available, they served a frozen snapshot from the initial migration. Fixed by calling `globalThis.__syncTradeToStore?.(trade, 'paper')` after both `addTrade()` (on entry) and `updateTrade()` (on exit) in `PaperExecutor.js`.
+- **"Position open: N" in Why no entry?**: `TradingEngine` was emitting `` `Position open: ${positions.length}` `` as a blocker string (where `N` was the raw array length). Changed to `"Trade already open"` for consistency with `entryGate.js` check #9.
+- **"Trade already open" blocker showing in Why no entry? while position is open**: When `openTrade` is present the open trade panel already shows full position details, so the redundant blocker in the entry reason field is now filtered out and replaced with `"Monitoring open position"`.
+
+### Added
+
+- **Entry thresholds visible in dashboard**: Status table now shows 7 new rows: Schedule (Pacific day/hour + weekday/weekend detection), Prob E/M/L, Edge E/M/L, Spread/Liq, Conviction, Filters, and Guardrails — all reflecting live config values. Weekend tightening rows display effective tightened thresholds in amber when active.
+- **Weekend/weekday detection exposed to UI**: `assembleStatus()` now calls `getPacificTimeInfo()` and includes `isWeekend`, `pacificDay`, `pacificHour`, and `weekendTighteningActive` in the `entryThresholds` payload so the dashboard can confirm the bot's schedule context at a glance.
+
 ## [1.0.0] - 2026-02-23
 
 First production-ready release. Combines four development phases into a unified, deployable trading system.

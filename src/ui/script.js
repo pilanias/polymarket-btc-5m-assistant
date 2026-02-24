@@ -597,11 +597,23 @@ document.addEventListener('DOMContentLoaded', () => {
           const pct1 = v => v != null ? `${(v * 100).toFixed(1)}%` : '—';
           const c    = v => v != null ? `${(v * 100).toFixed(2)}¢` : '—';
           const usd  = v => v != null ? `$${v}` : '—';
-          const wknd = thr.weekendProbBoost > 0
-            ? ` <span class="threshold-wknd">(wknd +${pct(thr.weekendProbBoost)}p / +${pct1(thr.weekendEdgeBoost)}e)</span>`
+
+          // Schedule badge — shows whether weekend tightening is live right now
+          const schedBadge = thr.weekendTighteningActive
+            ? `<span class="threshold-wknd">⚠ WEEKEND tightening ACTIVE (${thr.pacificDay} ${thr.pacificHour}:00 PT)</span>`
+            : `<span style="color:var(--good)">✓ Weekday</span> <span style="opacity:0.5">${thr.pacificDay} ${String(thr.pacificHour).padStart(2,'0')}:00 PT</span>`;
+
+          // If weekend tightening is active, show effective tightened values inline
+          const effProb = thr.weekendTighteningActive
+            ? ` <span class="threshold-wknd">→ active: ${pct(thr.minProbEarly + thr.weekendProbBoost)} / ${pct(thr.minProbMid + thr.weekendProbBoost)} / ${pct(thr.minProbLate + thr.weekendProbBoost)}</span>`
             : '';
-          rows.push(['Prob E/M/L',  `${pct(thr.minProbEarly)} / ${pct(thr.minProbMid)} / ${pct(thr.minProbLate)}${wknd}`]);
-          rows.push(['Edge E/M/L',  `${pct1(thr.edgeEarly)} / ${pct1(thr.edgeMid)} / ${pct1(thr.edgeLate)}`]);
+          const effEdge = thr.weekendTighteningActive
+            ? ` <span class="threshold-wknd">→ active: ${pct1(thr.edgeEarly + thr.weekendEdgeBoost)} / ${pct1(thr.edgeMid + thr.weekendEdgeBoost)} / ${pct1(thr.edgeLate + thr.weekendEdgeBoost)}</span>`
+            : '';
+
+          rows.push(['Schedule',     schedBadge]);
+          rows.push(['Prob E/M/L',   `${pct(thr.minProbEarly)} / ${pct(thr.minProbMid)} / ${pct(thr.minProbLate)}${effProb}`]);
+          rows.push(['Edge E/M/L',   `${pct1(thr.edgeEarly)} / ${pct1(thr.edgeMid)} / ${pct1(thr.edgeLate)}${effEdge}`]);
           rows.push(['Spread / Liq', `spread ≤${c(thr.maxSpread)} (wknd ≤${c(thr.weekendMaxSpread)}) · liq ≥${usd(thr.minLiquidity)} (wknd ≥$${(thr.weekendMinLiquidity ?? 0).toLocaleString()})`]);
           rows.push(['Conviction',   `model max ≥${pct(thr.minModelMaxProb)} (wknd ≥${pct(thr.weekendMinModelMaxProb)}) · entry ≤${c(thr.maxEntryPolyPrice)}`]);
           rows.push(['Filters',      `RSI skip ${thr.noTradeRsiMin}–${thr.noTradeRsiMax} · range ≥${(thr.minRangePct20 * 100).toFixed(2)}% · impulse ≥${(thr.minBtcImpulsePct1m * 100).toFixed(3)}% · no entry <${thr.noEntryFinalMinutes}m`]);
