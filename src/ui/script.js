@@ -438,9 +438,8 @@ document.addEventListener('DOMContentLoaded', () => {
       // After a user action POST, we enter "seeking mode" — poll without
       // locking until we find an instance whose tradingEnabled matches
       // our local UI state, then lock to that instance.
-      // Instance locking: skip STATUS rendering from wrong instances, but
-      // always fall through to the trades section (prevents data flashing
-      // when load balancer alternates between instances).
+      // Instance locking: skip STATUS rendering from wrong instances.
+      // Trades section always runs (trades read from persistent SQLite).
       const respInstanceId = statusData?.status?._instanceId;
       let _skipStatusRender = false;
       if (_seekingInstance) {
@@ -488,10 +487,10 @@ document.addEventListener('DOMContentLoaded', () => {
         _foreignInstanceCount = 0;
       }
 
-      // If wrong instance, skip this entire poll cycle (status + trades).
-      // Trades fetch would also hit the load balancer and may route to a
-      // different instance with empty/stale data, overwriting the cache.
-      if (_skipStatusRender) return;
+      // If wrong instance, skip STATUS rendering but still fetch trades.
+      // Trades are read from persistent SQLite, so they're consistent
+      // regardless of which server instance serves the request.
+      if (_skipStatusRender) throw new Error('__skip_status__');
 
       lastStatusCache = statusData;
 
@@ -619,16 +618,6 @@ document.addEventListener('DOMContentLoaded', () => {
           rows.push(['Conviction',   `model max ≥${pct(thr.minModelMaxProb)} (wknd ≥${pct(thr.weekendMinModelMaxProb)}) · entry ≤${c(thr.maxEntryPolyPrice)}`]);
           rows.push(['Filters',      `RSI skip ${thr.noTradeRsiMin}–${thr.noTradeRsiMax} · range ≥${(thr.minRangePct20 * 100).toFixed(2)}% · impulse ≥${(thr.minBtcImpulsePct1m * 100).toFixed(3)}% · no entry <${thr.noEntryFinalMinutes}m`]);
           rows.push(['Guardrails',   `circuit ${thr.circuitBreakerConsecutiveLosses} losses · daily loss ${usd(thr.maxDailyLossUsd)} · cooldown L${thr.lossCooldownSeconds}s / W${thr.winCooldownSeconds}s`]);
-        }
-
-        // Blocker frequency summary (if available)
-        const bSum = statusData.blockerSummary;
-        if (bSum && Array.isArray(bSum.topBlockers) && bSum.topBlockers.length > 0) {
-          const tags = bSum.topBlockers
-            .slice(0, 5)
-            .map(b => `<span class="blocker-tag">${b.blocker} <strong>${b.pct}%</strong></span>`)
-            .join(' ');
-          rows.push(['Top blockers', `${tags} <span style="opacity:0.5">(${bSum.total} checks)</span>`]);
         }
 
         statusMessage.innerHTML = `<table class="kv-table"><tbody>` +
@@ -862,14 +851,18 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
     } catch (error) {
-      // On transient fetch errors, preserve last good UI data instead of
-      // overwriting with error messages (prevents flash/flicker with load-balanced instances).
-      console.error('Error fetching status data:', error);
-      if (!lastStatusCache) {
-        const msg = (error && error.message) ? error.message : String(error);
-        statusMessage.textContent = `Error loading status data: ${msg}`;
-        openTradeDiv.textContent = `Error loading trade data: ${msg}`;
-        ledgerSummaryDiv.textContent = `Error loading summary data: ${msg}`;
+      if (error?.message === '__skip_status__') {
+        // Intentional skip — foreign instance detected, fall through to trades.
+      } else {
+        // On transient fetch errors, preserve last good UI data instead of
+        // overwriting with error messages (prevents flash/flicker with load-balanced instances).
+        console.error('Error fetching status data:', error);
+        if (!lastStatusCache) {
+          const msg = (error && error.message) ? error.message : String(error);
+          statusMessage.textContent = `Error loading status data: ${msg}`;
+          openTradeDiv.textContent = `Error loading trade data: ${msg}`;
+          ledgerSummaryDiv.textContent = `Error loading summary data: ${msg}`;
+        }
       }
     }
 

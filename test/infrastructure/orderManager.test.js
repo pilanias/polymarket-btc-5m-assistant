@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { OrderManager } from '../../src/infrastructure/orders/OrderManager.js';
+import { LIFECYCLE_STATES } from '../../src/domain/orderLifecycle.js';
 
 // ─── Track orders ──────────────────────────────────────────────────
 
@@ -54,8 +55,9 @@ test('getPendingOrders: filters by status', () => {
   om.trackOrder('o1', { tokenID: 't', side: 'BUY', price: 0.05, size: 10 });
   om.trackOrder('o2', { tokenID: 't', side: 'BUY', price: 0.05, size: 10 });
 
-  // Manually update one to filled
-  om._orders.get('o1').status = 'filled';
+  // Transition o1 to FILLED via lifecycle state machine (SUBMITTED → PENDING → FILLED)
+  om.transitionOrder('o1', LIFECYCLE_STATES.PENDING);
+  om.transitionOrder('o1', LIFECYCLE_STATES.FILLED);
 
   const pending = om.getPendingOrders({ status: 'pending' });
   assert.equal(pending.length, 1);
@@ -95,8 +97,12 @@ test('getSnapshot: counts by status', () => {
   om.trackOrder('o2', { tokenID: 't', side: 'BUY', price: 0.05, size: 10 });
   om.trackOrder('o3', { tokenID: 't', side: 'SELL', price: 0.95, size: 10 });
 
-  om._orders.get('o1').status = 'filled';
-  om._orders.get('o3').status = 'cancelled';
+  // o1: SUBMITTED → PENDING → FILLED  (legacy status: 'filled')
+  om.transitionOrder('o1', LIFECYCLE_STATES.PENDING);
+  om.transitionOrder('o1', LIFECYCLE_STATES.FILLED);
+
+  // o3: SUBMITTED → CANCELLED  (legacy status: 'cancelled')
+  om.transitionOrder('o3', LIFECYCLE_STATES.CANCELLED);
 
   const snap = om.getSnapshot();
   assert.equal(snap.total, 3);
@@ -109,6 +115,7 @@ test('getSnapshot: counts by status', () => {
 
 test('cancelOrder: returns error without client', async () => {
   const om = new OrderManager();
+  om._getClient = () => null; // Force no client for this test
   om.trackOrder('o1', { tokenID: 't', side: 'BUY', price: 0.05, size: 10 });
 
   const result = await om.cancelOrder('o1');
@@ -118,6 +125,7 @@ test('cancelOrder: returns error without client', async () => {
 
 test('cancelAllOrders: returns error without client', async () => {
   const om = new OrderManager();
+  om._getClient = () => null; // Force no client for this test
   const result = await om.cancelAllOrders();
   assert.equal(result.cancelled, false);
   assert.ok(result.error);
@@ -125,21 +133,24 @@ test('cancelAllOrders: returns error without client', async () => {
 
 // ─── Prune ─────────────────────────────────────────────────────────
 
-test('pruneOldOrders: removes old filled/cancelled orders', () => {
+test('pruneOldOrders: removes old terminal orders', () => {
   const om = new OrderManager();
   om.trackOrder('o1', { tokenID: 't', side: 'BUY', price: 0.05, size: 10 });
   om.trackOrder('o2', { tokenID: 't', side: 'BUY', price: 0.05, size: 10 });
   om.trackOrder('o3', { tokenID: 't', side: 'BUY', price: 0.05, size: 10 });
 
-  // o1 = filled, old
-  om._orders.get('o1').status = 'filled';
-  om._orders.get('o1').updatedAt = new Date(Date.now() - 60 * 60_000).toISOString(); // 1 hour ago
+  // o1 = EXITED (terminal), old SUBMITTED timestamp
+  om.transitionOrder('o1', LIFECYCLE_STATES.PENDING);
+  om.transitionOrder('o1', LIFECYCLE_STATES.FILLED);
+  om.transitionOrder('o1', LIFECYCLE_STATES.MONITORING);
+  om.transitionOrder('o1', LIFECYCLE_STATES.EXITED);
+  om._orders.get('o1').timestamps[LIFECYCLE_STATES.SUBMITTED] = Date.now() - 60 * 60_000; // 1 hour ago
 
-  // o2 = cancelled, old
-  om._orders.get('o2').status = 'cancelled';
-  om._orders.get('o2').updatedAt = new Date(Date.now() - 60 * 60_000).toISOString();
+  // o2 = CANCELLED (terminal), old SUBMITTED timestamp
+  om.transitionOrder('o2', LIFECYCLE_STATES.CANCELLED);
+  om._orders.get('o2').timestamps[LIFECYCLE_STATES.SUBMITTED] = Date.now() - 60 * 60_000;
 
-  // o3 = pending (should not be pruned)
+  // o3 = SUBMITTED (not terminal, should not be pruned)
 
   om.pruneOldOrders(30 * 60_000); // 30 min cutoff
 
@@ -147,11 +158,16 @@ test('pruneOldOrders: removes old filled/cancelled orders', () => {
   assert.ok(om._orders.has('o3'));
 });
 
-test('pruneOldOrders: keeps recent filled orders', () => {
+test('pruneOldOrders: keeps recent terminal orders', () => {
   const om = new OrderManager();
   om.trackOrder('o1', { tokenID: 't', side: 'BUY', price: 0.05, size: 10 });
-  om._orders.get('o1').status = 'filled';
-  om._orders.get('o1').updatedAt = new Date().toISOString(); // Just now
+
+  // Transition to terminal state (EXITED)
+  om.transitionOrder('o1', LIFECYCLE_STATES.PENDING);
+  om.transitionOrder('o1', LIFECYCLE_STATES.FILLED);
+  om.transitionOrder('o1', LIFECYCLE_STATES.MONITORING);
+  om.transitionOrder('o1', LIFECYCLE_STATES.EXITED);
+  // SUBMITTED timestamp is recent (just created), so should not be pruned
 
   om.pruneOldOrders(30 * 60_000);
   assert.equal(om._orders.size, 1); // Still there
