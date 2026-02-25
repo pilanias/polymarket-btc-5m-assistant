@@ -576,6 +576,15 @@ document.addEventListener('DOMContentLoaded', () => {
           ['Poly UP / DOWN', `${polyUp} / ${polyDown}`],
           ['Model', `${rt.narrative || 'N/A'} (UP ${up} / DOWN ${down})`],
           ['Candles (1m)', String(cc)],
+          ['Price Feed', (() => {
+            const lastTick = rt.lastTickAt ? new Date(rt.lastTickAt) : null;
+            const ticks = rt.tickCount ?? 0;
+            if (!lastTick) return `<span style="color:var(--bad)">No ticks yet</span> (${ticks} total)`;
+            const agoSec = Math.round((Date.now() - lastTick.getTime()) / 1000);
+            const agoLabel = agoSec < 60 ? `${agoSec}s ago` : `${Math.round(agoSec / 60)}m ago`;
+            const color = agoSec < 180 ? 'var(--good)' : 'var(--bad)';
+            return `<span style="color:${color}">Last tick ${agoLabel}</span> (${ticks.toLocaleString()} total)`;
+          })()],
           ['Entry Gate', entrySummary],
         ];
 
