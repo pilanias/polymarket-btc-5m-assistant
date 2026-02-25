@@ -175,11 +175,13 @@ export function computeEntryBlockers(signals, config, state, candleCount) {
     blockers.push('Market data sanity: invalid Polymarket prices (gamma 0/NaN and no valid orderbook quotes)');
   }
 
-  // ── 3b. Candle freshness (warning only, not a blocker) ─────────
-  // Disabled as a hard blocker because Kraken backfill candles have historical
-  // closeTime values, causing 100% block rate. Indicators still work on
-  // backfilled data — other blockers (RSI, impulse, etc.) guard quality.
-  // TODO: Re-enable once candle builder tracks a "lastTickAt" timestamp.
+  // ── 3b. Candle freshness (uses live tick timestamp, not candle time) ────
+  // candleMeta.lastTickAt tracks when the last real Chainlink tick arrived.
+  // If no tick has arrived in 3+ minutes, indicators are stale.
+  const lastTickAt = signals.candleMeta?.lastTickAt ?? null;
+  if (isNum(lastTickAt) && (Date.now() - lastTickAt) > 180_000) {
+    blockers.push(`Stale price data (no Chainlink tick in >${Math.round((Date.now() - lastTickAt) / 60_000)}m)`);
+  }
 
   // ── 4. Settlement time gate ─────────────────────────────────────
   const endDate = signals.market?.endDate ?? poly?.market?.endDate ?? null;
@@ -536,7 +538,7 @@ export function computeEntryGateEvaluation(signals, config, state, candleCount) 
     margins.impulse = null;
   }
 
-  const totalChecks = 26; // 27 minus stale candle (disabled)
+  const totalChecks = 27;
   const failedCount = blockers.length;
   const passedCount = totalChecks - failedCount;
 

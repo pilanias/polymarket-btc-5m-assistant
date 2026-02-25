@@ -101,7 +101,7 @@ function computeIndicators(klines1m, currentPrice) {
   return data;
 }
 
-function buildSignals({ rec, klines1m, polySnapshot, polyPrices, marketUp, marketDown, timeLeftMin, timeAware, indicatorsData, spotNow, spotDelta1mPct }) {
+function buildSignals({ rec, klines1m, polySnapshot, polyPrices, marketUp, marketDown, timeLeftMin, timeAware, indicatorsData, spotNow, spotDelta1mPct, candleMeta }) {
   return {
     rec,
     kline: klines1m.length ? klines1m[klines1m.length - 1] : null,
@@ -114,7 +114,8 @@ function buildSignals({ rec, klines1m, polySnapshot, polyPrices, marketUp, marke
     modelDown: timeAware.adjustedDown,
     predictNarrative: (timeAware.adjustedUp !== null && timeAware.adjustedDown !== null) ? (timeAware.adjustedUp > timeAware.adjustedDown ? "LONG" : "SHORT") : "NEUTRAL",
     indicators: indicatorsData,
-    spot: { price: spotNow, delta1mPct: spotDelta1mPct }
+    spot: { price: spotNow, delta1mPct: spotDelta1mPct },
+    candleMeta: candleMeta ?? null,
   };
 }
 
@@ -310,8 +311,12 @@ async function startApp() {
 
   // Build lightweight 1m candles from Chainlink ticks for indicators (no exchange dependency).
   const chainlinkCandles1m = [];
+  /** @type {{ lastTickAt: number|null, tickCount: number }} */
+  const candleMeta = { lastTickAt: null, tickCount: 0 };
   const pushChainlinkTick = ({ price, updatedAt }) => {
     if (typeof price !== "number" || !Number.isFinite(price)) return;
+    candleMeta.lastTickAt = Date.now();
+    candleMeta.tickCount++;
     const ts = typeof updatedAt === "number" && Number.isFinite(updatedAt) ? updatedAt : Date.now();
     const bucket = Math.floor(ts / 60_000) * 60_000;
     const last = chainlinkCandles1m[chainlinkCandles1m.length - 1];
@@ -528,13 +533,15 @@ async function startApp() {
 
     const predictNarrative = (timeAware.adjustedUp !== null && timeAware.adjustedDown !== null)
       ? (timeAware.adjustedUp > timeAware.adjustedDown ? "LONG" : "SHORT") : "NEUTRAL";
-    const signalsForTrader = buildSignals({ rec, klines1m, polySnapshot, polyPrices, marketUp, marketDown, timeLeftMin, timeAware, indicatorsData, spotNow, spotDelta1mPct });
+    const signalsForTrader = buildSignals({ rec, klines1m, polySnapshot, polyPrices, marketUp, marketDown, timeLeftMin, timeAware, indicatorsData, spotNow, spotDelta1mPct, candleMeta });
 
     globalThis.__uiStatus = {
       marketSlug: polySnapshot.ok ? (polySnapshot.market?.slug ?? null) : null,
       timeLeftMin, btcPrice: currentPrice, spotPrice: spotNow, spotDelta1mPct,
       modelUp: timeAware.adjustedUp, modelDown: timeAware.adjustedDown, narrative: predictNarrative,
       polyUp: polyPrices.UP, polyDown: polyPrices.DOWN, candleCount: klines1m?.length ?? 0,
+      lastTickAt: candleMeta.lastTickAt ? new Date(candleMeta.lastTickAt).toISOString() : null,
+      tickCount: candleMeta.tickCount,
       lastUpdate: new Date().toISOString(),
       // Live gate values for threshold comparison
       rsiNow: indicatorsData.rsiNow ?? null,
