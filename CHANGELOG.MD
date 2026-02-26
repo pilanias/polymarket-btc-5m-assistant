@@ -2,6 +2,11 @@
 
 All notable changes to Polymarket BTC 5m Assistant are documented in this file.
 
+## [1.0.6] - 2026-02-26
+
+### Added
+- **Auto-start trading on boot**: Trading now auto-enables on startup (default: `AUTO_START_TRADING=true`). No more manual "Start Trading" click after every DigitalOcean deploy. Set `AUTO_START_TRADING=false` to disable.
+
 ## [1.0.5] - 2026-02-26
 
 ### Changed (data-driven tuning from 84-trade analysis)

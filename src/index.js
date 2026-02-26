@@ -397,6 +397,13 @@ async function startApp() {
 
   console.log(`--- Bot Started ---`);
   console.log(`Mode: ${modeManager.getMode()} | Live available: ${modeManager.isLiveAvailable()}`);
+  // Auto-start trading on boot if configured (avoids manual click after every deploy)
+  const autoStart = (process.env.AUTO_START_TRADING || 'true').toLowerCase() === 'true';
+  if (autoStart && !engine.tradingEnabled) {
+    engine.tradingEnabled = true;
+    console.log('[Boot] Auto-started trading (AUTO_START_TRADING=true)');
+  }
+
   console.log(`Trading: ${engine.tradingEnabled ? 'ACTIVE' : 'STOPPED (start via UI)'}`);
   console.log(`BTC feed: Chainlink WS (candles built from ticks).`);
   console.log(`UI Server running on http://localhost:${CONFIG.uiPort}. Use 'ngrok http ${CONFIG.uiPort}' for remote access.`);
