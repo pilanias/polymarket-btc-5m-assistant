@@ -406,6 +406,33 @@ export function computeEntryBlockers(signals, config, state, candleCount) {
     }
   }
 
+  // ── 22b. Heiken Ashi exhaustion filter ─────────────────────────
+  // Count 4-6 = trend exhaustion zone: 52 trades, 38% WR, -$35 (157-trade analysis).
+  // Count 2-3 is best (54% WR, +$112). Count 7+ = strong trend, allow.
+  const heikenExhaustionEnabled = config.heikenExhaustionFilterEnabled !== false;
+  const heikenExhaustionMin = config.heikenExhaustionMin ?? 4;
+  const heikenExhaustionMax = config.heikenExhaustionMax ?? 6;
+  if (heikenExhaustionEnabled && hasHeiken && isNum(ind.heikenCount)) {
+    if (ind.heikenCount >= heikenExhaustionMin && ind.heikenCount <= heikenExhaustionMax) {
+      blockers.push(`Heiken exhaustion (count ${ind.heikenCount}, range ${heikenExhaustionMin}-${heikenExhaustionMax})`);
+    }
+  }
+
+  // ── 22c. Require strong signal: model prob >80% OR edge >8% ──
+  // 60-80% prob with <8% edge: losing money. Need at least one strong signal.
+  const requireStrongSignal = config.requireStrongSignalEnabled !== false;
+  const strongProbThreshold = config.strongProbThreshold ?? 0.80;
+  const strongEdgeThreshold = config.strongEdgeThreshold ?? 0.08;
+  if (requireStrongSignal) {
+    const modelProb = effectiveSide === 'UP' ? signals.modelUp : signals.modelDown;
+    const edge = rec?.edge ?? 0;
+    const hasStrongProb = isNum(modelProb) && modelProb >= strongProbThreshold;
+    const hasStrongEdge = isNum(edge) && edge >= strongEdgeThreshold;
+    if (!hasStrongProb && !hasStrongEdge) {
+      blockers.push(`No strong signal (prob ${((modelProb ?? 0) * 100).toFixed(1)}% < ${(strongProbThreshold * 100)}%, edge ${((edge ?? 0) * 100).toFixed(1)}% < ${(strongEdgeThreshold * 100)}%)`);
+    }
+  }
+
   // ── 23. Phase-based thresholds ─────────────────────────────────
   const phase = rec?.phase;
   if (phase && rec?.side) {
@@ -553,7 +580,7 @@ export function computeEntryGateEvaluation(signals, config, state, candleCount) 
     margins.impulse = null;
   }
 
-  const totalChecks = 28; // Added RSI directional bias blocker
+  const totalChecks = 30; // +RSI directional bias, +heiken exhaustion, +strong signal
   const failedCount = blockers.length;
   const passedCount = totalChecks - failedCount;
 

@@ -4,6 +4,39 @@ Tracks every config change with the data that drove it. Never change parameters 
 
 ---
 
+## v1.0.10 — 2026-02-27 (157 trades post-v1.0.7)
+
+### Dataset
+- 157 trades on v1.0.7/v1.0.8/v1.0.9
+
+### Changes
+
+| Parameter | Old | New | Data Rationale |
+|-----------|-----|-----|----------------|
+| `heikenExhaustionFilterEnabled` | N/A | true | HA count 4-6: 52 trades, 38% WR, -$35. Trend exhaustion zone. |
+| `heikenExhaustionMin` | N/A | 4 | Block entries at 4-6 consecutive same-color candles |
+| `heikenExhaustionMax` | N/A | 6 | Count 7+ allowed (strong trend, 53% WR) |
+| `requireStrongSignalEnabled` | N/A | true | Require model prob ≥80% OR edge ≥8% |
+| `strongProbThreshold` | N/A | 0.80 | Prob >80%: 51 trades, 57% WR, +$129 |
+| `strongEdgeThreshold` | N/A | 0.08 | Edge 8-15%: 35 trades, 51% WR, +$60 |
+
+### Supporting Data
+- HA count 2-3: 50 trades, 54% WR, +$112 (best bucket)
+- HA count 4-6: 52 trades, 38% WR, -$35 (worst bucket)
+- HA count 7+: 17 trades, 53% WR, +$9 (strong trend, allow)
+- Model prob >80%: 51 trades, 57% WR, +$129 ($2.53/trade)
+- Model prob 70-80%: 35 trades, 46% WR, -$33 (dead zone)
+- Edge 8-15%: 35 trades, 51% WR, +$60 ($1.71/trade, best)
+- Edge <8%: 20 trades, 45% WR, -$5
+- MACD alignment: no signal (47% WR both ways) — not used
+- Heiken color alignment: marginal (48% vs 44%) — not used
+
+### Expected Impact
+- ~30-40 fewer bad entries per 150 trades
+- Savings: $200-300 from avoided max losses
+
+---
+
 ## v1.0.9 — 2026-02-27 (151 trades post-v1.0.7)
 
 ### Dataset

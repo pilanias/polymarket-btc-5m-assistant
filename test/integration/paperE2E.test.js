@@ -109,7 +109,7 @@ class StubPaperExecutor {
 
 function makeSignals(overrides = {}) {
   const base = {
-    rec: { action: 'ENTER', side: 'UP', phase: 'MID', edge: 0.05 },
+    rec: { action: 'ENTER', side: 'UP', phase: 'MID', edge: 0.10 },
     timeLeftMin: 3.0,
     modelUp: 0.62,
     modelDown: 0.38,

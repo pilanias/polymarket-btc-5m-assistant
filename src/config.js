@@ -318,6 +318,21 @@ export const CONFIG = {
     // Raised from 60 to 65: RSI>60 UP had 42 trades at -$7 PnL. Cuts marginal entries.
     rsiBullishThreshold: Number(process.env.RSI_BULLISH_THRESHOLD) || 65,
 
+    // Heiken Ashi exhaustion filter: block entries when HA count is 4-6.
+    // 157-trade data: count 4-6 had 38% WR, -$35. Count 2-3 best (54% WR, +$112).
+    // Count 7+ allowed (strong trend, 53% WR).
+    heikenExhaustionFilterEnabled:
+      (process.env.HEIKEN_EXHAUSTION_FILTER_ENABLED || 'true').toLowerCase() === 'true',
+    heikenExhaustionMin: Number(process.env.HEIKEN_EXHAUSTION_MIN) || 4,
+    heikenExhaustionMax: Number(process.env.HEIKEN_EXHAUSTION_MAX) || 6,
+
+    // Require at least one strong signal: model prob >= 80% OR edge >= 8%.
+    // 157-trade data: 60-80% prob with <8% edge was bleeding money.
+    requireStrongSignalEnabled:
+      (process.env.REQUIRE_STRONG_SIGNAL_ENABLED || 'true').toLowerCase() === 'true',
+    strongProbThreshold: Number(process.env.STRONG_PROB_THRESHOLD) || 0.80,
+    strongEdgeThreshold: Number(process.env.STRONG_EDGE_THRESHOLD) || 0.08,
+
     // Time filters
     // For 5m, avoid new entries too close to settlement (rollover risk)
     noEntryFinalMinutes: Number(process.env.NO_ENTRY_FINAL_MIN) || 1.5,
