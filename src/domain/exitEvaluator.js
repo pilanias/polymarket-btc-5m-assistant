@@ -190,6 +190,12 @@ export function evaluateExits(position, signals, config, graceState, nowMs) {
     return result;
   }
 
+  // ── 2b. Minimum hold period — skip max loss if trade is too young ──
+  // Prevents stop-outs from entry volatility. Data shows 5/7 "right direction but lost"
+  // trades hit max loss in <10s. Give the trade time to breathe.
+  const minHoldSeconds = config.minHoldBeforeStopSeconds ?? 0;
+  const withinMinHold = isNum(minHoldSeconds) && minHoldSeconds > 0 && isNum(tradeAgeSec) && tradeAgeSec < minHoldSeconds;
+
   // ── 3. Max loss with grace window ────────────────────────────────
   const maxLossUsd = computeMaxLossUsd(position.contractSize, config);
   const graceEnabled = config.maxLossGraceEnabled ?? false;
@@ -198,7 +204,7 @@ export function evaluateExits(position, signals, config, graceState, nowMs) {
   const requireModelSupport =
     config.maxLossGraceRequireModelSupport ?? false;
 
-  if (pnlNow !== null && isNum(maxLossUsd) && maxLossUsd > 0) {
+  if (pnlNow !== null && isNum(maxLossUsd) && maxLossUsd > 0 && !withinMinHold) {
     const maxLossAbs = Math.abs(maxLossUsd);
     const breached = pnlNow <= -maxLossAbs;
 
@@ -309,6 +315,20 @@ export function evaluateExits(position, signals, config, graceState, nowMs) {
       result.decision = { reason: 'Take Profit' };
       return result;
     }
+  }
+
+  // ── 6b. Stagnation exit — trade going nowhere after threshold ───
+  // Trades >30s with flat PnL are more likely to eventually hit max loss than recover.
+  // v1.0.7 data: trades >25s had 36% WR and +$0.55 avg PnL.
+  const stagnationSeconds = config.stagnationExitSeconds ?? 0;
+  const stagnationBandUsd = config.stagnationBandUsd ?? 2;
+  if (
+    isNum(stagnationSeconds) && stagnationSeconds > 0 &&
+    isNum(tradeAgeSec) && tradeAgeSec >= stagnationSeconds &&
+    pnlNow !== null && Math.abs(pnlNow) <= stagnationBandUsd
+  ) {
+    result.decision = { reason: `Stagnation Exit (${tradeAgeSec.toFixed(0)}s, PnL $${pnlNow.toFixed(2)})` };
+    return result;
   }
 
   // ── 7. Time stop ─────────────────────────────────────────────────

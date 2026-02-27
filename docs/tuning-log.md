@@ -4,6 +4,45 @@ Tracks every config change with the data that drove it. Never change parameters 
 
 ---
 
+## v1.0.8 — 2026-02-27 (103 trades post-v1.0.7)
+
+### Dataset
+- 103 closed trades on v1.0.7 config
+- Performance: 55% WR, PF 1.50, +$184.58
+- Settlement data available for 53 trades
+
+### Changes
+
+| Parameter | Old | New | Data Rationale |
+|-----------|-----|-----|----------------|
+| `minHoldBeforeStopSeconds` | N/A | 5 | 5/7 "right direction but lost" trades hit max loss in <10s. 5s grace lets entry volatility settle |
+| `stagnationExitSeconds` | N/A | 30 | Trades >25s: 36% WR, +$0.55 avg. Flat trades usually hit max loss eventually |
+| `stagnationBandUsd` | N/A | 2 | Exit if PnL within ±$2 after stagnation threshold |
+| `rsiBullishThreshold` | 60 | 65 | RSI>60 UP: 42 trades, 52% WR, -$7 PnL. Cuts marginal momentum entries |
+| `weekdaysOnly` | false | true | Weekend = low volume, wider spreads. Stops trading Sat + Sun until 6 PM PST |
+| `allowSundayAfterHour` | -1 | 18 | Resume Sunday 6 PM PST when volume picks up |
+
+### Key Findings (settlement data, 53 trades)
+- Direction accuracy: 34% (only right 1 in 3 times)
+- Right direction + won: 11 trades, avg +$16.03 (the big wins)
+- Wrong direction + won: 16 trades, avg +$7.98 (scalping microstructure)
+- All 19 "wrong + lost" were Max Loss; all 27 wins were Trailing TP
+- Bot is a scalper, not a directional predictor — profits from short-term volatility
+
+### Expected Impact
+- Min hold: converts some early stop-outs into winners (est. +$30-50 over 100 trades)
+- Stagnation exit: cuts stagnant trades at ~-$1 instead of waiting for full -$8 max loss
+- RSI threshold: removes unprofitable high-volume bucket
+- Weekend block: avoids low-liquidity conditions
+
+### Risks
+- Min hold: extra $1-2 exposure per early trade if truly bad
+- Stagnation exit: might cut trades that would have eventually won (but data says unlikely)
+- RSI 65: reduces trade count. RSI 60-65 UP trades may include some winners we're now blocking
+- Weekend block: misses any good weekend trades (acceptable trade-off for stability)
+
+---
+
 ## v1.0.7 — 2026-02-26 (234 trades)
 
 ### Dataset

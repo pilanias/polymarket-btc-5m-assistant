@@ -110,8 +110,19 @@ export const CONFIG = {
     // Exit settings
     // Close before settlement to avoid rollover weirdness.
     exitBeforeEndMinutes: Number(process.env.EXIT_BEFORE_END_MIN) || 1.0,
+
+    // Stagnation exit: if trade is flat (PnL within ±$2) after this many seconds, exit early.
+    // v1.0.7 data: trades >25s had 36% WR, +$0.55 avg. Stagnating trades usually hit max loss.
+    stagnationExitSeconds: Number(process.env.STAGNATION_EXIT_SECONDS) || 30,
+    stagnationBandUsd: Number(process.env.STAGNATION_BAND_USD) || 2,
+
     // Time stop: if a trade can't go green quickly, cut it.
     loserMaxHoldSeconds: Number(process.env.LOSER_MAX_HOLD_SECONDS) || 120,
+
+    // Minimum hold before max loss can trigger (seconds).
+    // Prevents stop-outs from entry volatility. 5/7 "right direction but lost" trades
+    // hit max loss in <10s — the market dipped then went our way.
+    minHoldBeforeStopSeconds: Number(process.env.MIN_HOLD_BEFORE_STOP_SECONDS) || 5,
 
     // Hard max loss cap (USD): prevents one trade from wiping multiple small wins.
     // If pnlNow <= -maxLossUsdPerTrade, force exit (unless max-loss grace is enabled).
@@ -224,10 +235,12 @@ export const CONFIG = {
 
     // Trading schedule filter (America/Los_Angeles)
     // If enabled, blocks weekend entries (with optional Sunday exception).
+    // Enabled: low weekend volume = worse fills and wider spreads.
     weekdaysOnly:
-      (process.env.WEEKDAYS_ONLY || 'false').toLowerCase() === 'true',
+      (process.env.WEEKDAYS_ONLY || 'true').toLowerCase() === 'true',
     // Optional exception: allow Sunday entries after this hour (0-23). Set negative/empty to disable.
-    allowSundayAfterHour: Number(process.env.ALLOW_SUNDAY_AFTER_HOUR) || -1,
+    // Allow Sunday evening (6 PM PST) when volume picks up before Monday.
+    allowSundayAfterHour: Number(process.env.ALLOW_SUNDAY_AFTER_HOUR) || 18,
     // Block new entries after this hour on Friday (0-23). Set empty/negative to disable.
     noEntryAfterFridayHour:
       Number(process.env.NO_ENTRY_AFTER_FRIDAY_HOUR) || 17,
@@ -292,7 +305,8 @@ export const CONFIG = {
     rsiDirectionalBiasEnabled:
       (process.env.RSI_DIRECTIONAL_BIAS_ENABLED || 'true').toLowerCase() === 'true',
     rsiBearishThreshold: Number(process.env.RSI_BEARISH_THRESHOLD) || 40,
-    rsiBullishThreshold: Number(process.env.RSI_BULLISH_THRESHOLD) || 60,
+    // Raised from 60 to 65: RSI>60 UP had 42 trades at -$7 PnL. Cuts marginal entries.
+    rsiBullishThreshold: Number(process.env.RSI_BULLISH_THRESHOLD) || 65,
 
     // Time filters
     // For 5m, avoid new entries too close to settlement (rollover risk)
