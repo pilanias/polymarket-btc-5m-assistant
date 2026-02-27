@@ -278,10 +278,10 @@ export function evaluateExits(position, signals, config, graceState, nowMs) {
     return result;
   }
 
-  // ── 5. Trailing take-profit ──────────────────────────────────────
+  // ── 5. Trailing take-profit (tiered drawdown) ─────────────────────
   if (pnlNow !== null && (config.trailingTakeProfitEnabled ?? false)) {
     const start = config.trailingStartUsd ?? 0;
-    const dd = config.trailingDrawdownUsd ?? 0;
+    const baseDd = config.trailingDrawdownUsd ?? 0;
     const maxU = isNum(position.maxUnrealizedPnl)
       ? position.maxUnrealizedPnl
       : null;
@@ -289,11 +289,25 @@ export function evaluateExits(position, signals, config, graceState, nowMs) {
     if (
       isNum(start) &&
       start > 0 &&
-      isNum(dd) &&
-      dd > 0 &&
+      isNum(baseDd) &&
+      baseDd > 0 &&
       maxU !== null &&
       maxU >= start
     ) {
+      // Tiered drawdown: scale with profit to ride bigger winners.
+      // Tiers from config or defaults: [threshold, drawdown]
+      const tiers = config.trailingDrawdownTiers ?? [
+        { above: 15, dd: 4.0 },
+        { above: 8, dd: 3.0 },
+      ];
+      let dd = baseDd; // default for lower profits
+      for (const tier of tiers) {
+        if (maxU >= tier.above) {
+          dd = tier.dd;
+          break; // tiers are sorted descending by threshold
+        }
+      }
+
       const trail = maxU - dd;
       if (pnlNow <= trail) {
         result.decision = {

@@ -199,11 +199,21 @@ export const CONFIG = {
     trailingTakeProfitEnabled:
       (process.env.TRAILING_TAKE_PROFIT_ENABLED || 'true').toLowerCase() ===
       'true',
-    trailingStartUsd: Number(process.env.TRAILING_TAKE_PROFIT_START_USD) || 3,
-    // Widened from 2.00 to 2.50: trailing TP had 16 losses in v1.0.5 (234-trade analysis).
-    // Wider drawdown lets more trades recover. Big winners ($25-$47) prove the engine can find large moves.
+    // Raised from $3 to $4: 21 trades peaked at avg $3.61 then reversed to losses.
+    // Premature trailing activation at $3 was causing false exits.
+    trailingStartUsd: Number(process.env.TRAILING_TAKE_PROFIT_START_USD) || 4,
+    // Base drawdown for profits $4-8. Tiered drawdown scales up for bigger winners.
     trailingDrawdownUsd:
-      Number(process.env.TRAILING_TAKE_PROFIT_DRAWDOWN_USD) || 2.50,
+      Number(process.env.TRAILING_TAKE_PROFIT_DRAWDOWN_USD) || 2.00,
+
+    // Tiered trailing drawdown: ride bigger winners with more room.
+    // Sorted descending by threshold. First match wins.
+    // Win capture was 63% — leaving ~$4/trade on table. Tiers let big winners breathe.
+    trailingDrawdownTiers: [
+      { above: 15, dd: 4.0 },  // PnL >$15: give $4 room (ride the big ones)
+      { above: 8, dd: 3.0 },   // PnL $8-15: give $3 room
+      // Below $8: uses base trailingDrawdownUsd ($2.00)
+    ],
 
     // Legacy/unused
     takeProfitPct: Number(process.env.TAKE_PROFIT_PCT) || 0.08,

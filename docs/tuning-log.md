@@ -4,6 +4,59 @@ Tracks every config change with the data that drove it. Never change parameters 
 
 ---
 
+## v1.0.9 — 2026-02-27 (151 trades post-v1.0.7)
+
+### Dataset
+- 151 trades on v1.0.7/v1.0.8
+- v1.0.8 (100 trades): 43% WR, PF 1.09, +$38.61
+- MFE analysis: winning trades capture only 63% of peak unrealized ($13.83 peak → $9.86 exit)
+- 21 trades peaked at avg +$3.61, then reversed to avg -$5.30 loss
+
+### Changes
+
+| Parameter | Old | New | Data Rationale |
+|-----------|-----|-----|----------------|
+| `trailingStartUsd` | 3 | 4 | 21 reversal trades peaked avg $3.61 — premature trailing activation at $3 |
+| `trailingDrawdownUsd` | 2.50 | 2.00 (base) | Tighter base for small wins ($4-8 range) |
+| `trailingDrawdownTiers` | N/A | [{above:15, dd:4.0}, {above:8, dd:3.0}] | Tiered: $4-8 gets $2, $8-15 gets $3, $15+ gets $4 |
+
+### Expected Impact
+- Fewer premature trailing activations at $3-4 peaks (saves 21-type reversal losses)
+- Small wins ($4-8) protected with tight $2 drawdown
+- Medium wins ($8-15) given $3 room → capture more of the $10-20 bucket
+- Big wins ($15+) given $4 room → ride $20-40 moves instead of exiting at $15
+
+### Risks
+- Higher start ($4) means some $3-4 wins become $0 or losses (but data shows these often reverse anyway)
+- Tighter base ($2 vs $2.50) on small wins could cause more shake-outs in $4-8 range
+
+---
+
+## Future: Dynamic Contract Sizing (for live trading)
+
+### Concept
+Scale position size based on confidence signals:
+- **Higher conviction** (strong RSI alignment, high model prob, high edge) → larger position
+- **Lower conviction** (borderline signals) → smaller position
+- Could also scale with recent win streak / PnL (Kelly criterion variant)
+
+### Current State
+- Fixed ~$80 contract size
+- Every trade gets same risk regardless of signal strength
+
+### Implementation Ideas
+- Base size from bankroll percentage (e.g., 2% of balance)
+- Multiplier from signal strength: 0.5x (weak) to 2.0x (strong)
+- Hard floor/ceiling to prevent over-sizing
+- Needs live trading data to calibrate — paper mode uses fixed balance
+
+### Prerequisites
+- Stable PF > 1.2 over 500+ trades
+- Live trading enabled
+- Risk management framework (max position per market, max daily exposure)
+
+---
+
 ## v1.0.8 — 2026-02-27 (103 trades post-v1.0.7)
 
 ### Dataset
