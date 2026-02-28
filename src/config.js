@@ -245,9 +245,9 @@ export const CONFIG = {
 
     // Trading schedule filter (America/Los_Angeles)
     // If enabled, blocks weekend entries (with optional Sunday exception).
-    // Enabled: low weekend volume = worse fills and wider spreads.
+    // Disabled: collecting data on weekend performance for paper trading.
     weekdaysOnly:
-      (process.env.WEEKDAYS_ONLY || 'true').toLowerCase() === 'true',
+      (process.env.WEEKDAYS_ONLY || 'false').toLowerCase() === 'true',
     // Optional exception: allow Sunday entries after this hour (0-23). Set negative/empty to disable.
     // Allow Sunday evening (6 PM PST) when volume picks up before Monday.
     allowSundayAfterHour: Number(process.env.ALLOW_SUNDAY_AFTER_HOUR) || 18,
