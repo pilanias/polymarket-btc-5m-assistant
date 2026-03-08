@@ -106,6 +106,34 @@ function isFreshTimestamp(ts, maxAgeMs) {
   return Number.isFinite(ts) && (Date.now() - ts) <= maxAgeMs;
 }
 
+function pushTickToCandles(candles, meta, { price, ts }, maxLen = 240) {
+  if (typeof price !== "number" || !Number.isFinite(price)) return;
+  meta.lastTickAt = Date.now();
+  meta.tickCount++;
+  const t = typeof ts === "number" && Number.isFinite(ts) ? ts : Date.now();
+  const bucket = Math.floor(t / 60_000) * 60_000;
+  const last = candles[candles.length - 1];
+
+  if (!last || last.openTime !== bucket) {
+    candles.push({
+      openTime: bucket,
+      open: price,
+      high: price,
+      low: price,
+      close: price,
+      volume: 0,
+      closeTime: bucket + 60_000,
+    });
+    if (candles.length > maxLen) candles.splice(0, candles.length - maxLen);
+    return;
+  }
+
+  last.high = Math.max(last.high, price);
+  last.low = Math.min(last.low, price);
+  last.close = price;
+  last.closeTime = bucket + 60_000;
+}
+
 function buildSignals({ rec, klines1m, polySnapshot, polyPrices, marketUp, marketDown, timeLeftMin, timeAware, indicatorsData, spotNow, spotDelta1mPct, candleMeta }) {
   return {
     rec,
@@ -321,34 +349,16 @@ async function startApp() {
 
   // Build lightweight 1m candles from Chainlink ticks for indicators (no exchange dependency).
   const chainlinkCandles1m = [];
+  const spotCandles1m = [];
   /** @type {{ lastTickAt: number|null, tickCount: number }} */
   const candleMeta = { lastTickAt: null, tickCount: 0 };
+  /** @type {{ lastTickAt: number|null, tickCount: number }} */
+  const spotCandleMeta = { lastTickAt: null, tickCount: 0 };
   const pushChainlinkTick = ({ price, updatedAt }) => {
-    if (typeof price !== "number" || !Number.isFinite(price)) return;
-    candleMeta.lastTickAt = Date.now();
-    candleMeta.tickCount++;
-    const ts = typeof updatedAt === "number" && Number.isFinite(updatedAt) ? updatedAt : Date.now();
-    const bucket = Math.floor(ts / 60_000) * 60_000;
-    const last = chainlinkCandles1m[chainlinkCandles1m.length - 1];
-
-    if (!last || last.openTime !== bucket) {
-      chainlinkCandles1m.push({
-        openTime: bucket,
-        open: price,
-        high: price,
-        low: price,
-        close: price,
-        volume: 0,
-        closeTime: bucket + 60_000
-      });
-      // keep last 240
-      if (chainlinkCandles1m.length > 240) chainlinkCandles1m.splice(0, chainlinkCandles1m.length - 240);
-    } else {
-      last.high = Math.max(last.high, price);
-      last.low = Math.min(last.low, price);
-      last.close = price;
-      last.closeTime = bucket + 60_000;
-    }
+    pushTickToCandles(chainlinkCandles1m, candleMeta, { price, ts: updatedAt }, 240);
+  };
+  const pushSpotTick = ({ price, ts }) => {
+    pushTickToCandles(spotCandles1m, spotCandleMeta, { price, ts }, 240);
   };
 
   const chainlinkStream = await startChainlinkPriceStream({ onUpdate: pushChainlinkTick });
@@ -375,6 +385,15 @@ async function startApp() {
         volume: (typeof c.volume === "number" && Number.isFinite(c.volume)) ? c.volume : 0,
         closeTime: c.closeTime
       })));
+      spotCandles1m.splice(0, spotCandles1m.length, ...seed.map((c) => ({
+        openTime: c.openTime,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+        volume: (typeof c.volume === "number" && Number.isFinite(c.volume)) ? c.volume : 0,
+        closeTime: c.closeTime
+      })));
       seededFromRest = true;
       console.log(`Seeded 1m candles from REST: ${chainlinkCandles1m.length}`);
     }
@@ -391,6 +410,7 @@ async function startApp() {
       if (typeof price !== "number" || !Number.isFinite(price)) return;
       const t = (typeof ts === "number" && Number.isFinite(ts)) ? ts : Date.now();
       spotTicks.push({ t, price });
+      pushSpotTick({ price, ts: t });
       // keep ~5 minutes of ticks
       const cutoff = Date.now() - 5 * 60_000;
       while (spotTicks.length && spotTicks[0].t < cutoff) spotTicks.shift();
@@ -434,6 +454,15 @@ async function startApp() {
         const seed = await klineProvider.fetchKlines({ interval: "1m", limit: 240 });
         if (Array.isArray(seed) && seed.length >= 30) {
           chainlinkCandles1m.splice(0, chainlinkCandles1m.length, ...seed.map((c) => ({
+            openTime: c.openTime,
+            open: c.open,
+            high: c.high,
+            low: c.low,
+            close: c.close,
+            volume: 0,
+            closeTime: c.closeTime
+          })));
+          spotCandles1m.splice(0, spotCandles1m.length, ...seed.map((c) => ({
             openTime: c.openTime,
             open: c.open,
             high: c.high,
@@ -494,11 +523,16 @@ async function startApp() {
     }
 
     // --- 1m Candle Data for indicators ---
-    // Built from Chainlink ticks (volume=0; VWAP will be null which is fine).
-    const klines1m = chainlinkCandles1m;
+    // Prefer exchange (Coinbase WS stream) candles for faster/continuous updates.
+    // Fall back to Chainlink candles when exchange stream is unavailable.
+    const chainlinkCandleFresh = isFreshTimestamp(candleMeta.lastTickAt, CONFIG.chainlink.maxTickAgeMs);
+    const spotCandleFresh = isFreshTimestamp(spotCandleMeta.lastTickAt, CONFIG.coinbase.maxTickAgeMs);
+    const useSpotCandles = spotCandleFresh && spotCandles1m.length >= CONFIG.candleWindowMinutes;
+    const klines1m = useSpotCandles ? spotCandles1m : chainlinkCandles1m;
+    const indicatorSource = useSpotCandles ? "coinbase_ws" : "chainlink";
 
     if (!klines1m || klines1m.length < CONFIG.candleWindowMinutes) {
-      console.warn(`Not enough Chainlink 1m candles yet (${klines1m?.length || 0}). Indicators might be unreliable.`);
+      console.warn(`Not enough 1m candles yet (${klines1m?.length || 0}, source=${indicatorSource}). Indicators might be unreliable.`);
     }
 
     const polySnapshot = await fetchPolymarketSnapshot();
@@ -572,6 +606,14 @@ async function startApp() {
       if (typeof base === "number" && Number.isFinite(base) && base > 0) {
         spotDelta1mPct = (spotNow - base) / base;
       }
+    } else if (spotNow === null && typeof currentPrice === "number" && Number.isFinite(currentPrice)) {
+      // Keep impulse alive when Coinbase stream is stale: use current market price as fallback.
+      const targetT = Date.now() - 60_000;
+      const baseCandle = klines1m.find((c) => c?.openTime >= targetT) ?? klines1m[0] ?? null;
+      const base = baseCandle?.close ?? null;
+      if (typeof base === "number" && Number.isFinite(base) && base > 0) {
+        spotDelta1mPct = (currentPrice - base) / base;
+      }
     }
 
     const predictNarrative = (timeAware.adjustedUp !== null && timeAware.adjustedDown !== null)
@@ -588,6 +630,11 @@ async function startApp() {
       lastUpdate: new Date().toISOString(),
       chainlinkTickFresh,
       spotTickFresh,
+      indicatorSource,
+      spotCandleCount: spotCandles1m.length,
+      chainlinkCandleCount: chainlinkCandles1m.length,
+      spotCandleFresh,
+      chainlinkCandleFresh,
       // Live gate values for threshold comparison
       rsiNow: indicatorsData.rsiNow ?? null,
       rangePct20: indicatorsData.rangePct20 ?? null,
