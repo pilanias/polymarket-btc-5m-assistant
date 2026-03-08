@@ -102,6 +102,10 @@ function computeIndicators(klines1m, currentPrice) {
   return data;
 }
 
+function isFreshTimestamp(ts, maxAgeMs) {
+  return Number.isFinite(ts) && (Date.now() - ts) <= maxAgeMs;
+}
+
 function buildSignals({ rec, klines1m, polySnapshot, polyPrices, marketUp, marketDown, timeLeftMin, timeAware, indicatorsData, spotNow, spotDelta1mPct, candleMeta }) {
   return {
     rec,
@@ -415,6 +419,8 @@ async function startApp() {
   if (tradingLock?.isLockHolder()) console.log(`[Phase 4] Trading lock: held (ID: ${tradingLock.instanceId})`);
 
   let prevCurrentPrice = null;
+  let chainlinkStaleWarned = false;
+  let spotStaleWarned = false;
   const csvHeader = ["timestamp", "time_left", "regime", "signal", "model_up", "model_down", "mkt_up", "mkt_down", "edge_up", "edge_down", "rec"];
 
   // State persistence tick counter (persist every ~30s based on 1s poll interval)
@@ -450,7 +456,19 @@ async function startApp() {
     // Fetch Live BTC Price Data ---
     // Primary: Chainlink WS (if configured)
     const chainlinkTick = chainlinkStream.getLast?.() ?? null;
-    if (chainlinkTick?.price) currentPrice = chainlinkTick.price;
+    const chainlinkTickFresh = isFreshTimestamp(
+      chainlinkTick?.updatedAt,
+      CONFIG.chainlink.maxTickAgeMs,
+    );
+    if (chainlinkTick?.price && chainlinkTickFresh) {
+      currentPrice = chainlinkTick.price;
+      chainlinkStaleWarned = false;
+    } else if (chainlinkTick?.price && !chainlinkTickFresh && !chainlinkStaleWarned) {
+      console.warn(
+        `Chainlink WS tick is stale (age>${Math.round(CONFIG.chainlink.maxTickAgeMs / 1000)}s); falling back to REST/provider price.`
+      );
+      chainlinkStaleWarned = true;
+    }
 
     // Fallback: Chainlink REST (reliable) + feed candle builder
     if (currentPrice === null) {
@@ -530,7 +548,19 @@ async function startApp() {
 
     // Spot impulse (Coinbase) over last 60s
     const spotLast = spotStream?.getLast?.() ?? { price: null, ts: null };
-    const spotNow = (typeof spotLast.price === "number" && Number.isFinite(spotLast.price)) ? spotLast.price : null;
+    const spotTickFresh = isFreshTimestamp(spotLast.ts, CONFIG.coinbase.maxTickAgeMs);
+    const spotNow = (
+      typeof spotLast.price === "number" &&
+      Number.isFinite(spotLast.price) &&
+      spotTickFresh
+    ) ? spotLast.price : null;
+    if (spotLast?.price !== null && !spotTickFresh && !spotStaleWarned) {
+      console.warn(
+        `Coinbase spot tick is stale (age>${Math.round(CONFIG.coinbase.maxTickAgeMs / 1000)}s); 1m impulse disabled until stream recovers.`
+      );
+      spotStaleWarned = true;
+    }
+    if (spotTickFresh) spotStaleWarned = false;
     let spotDelta1mPct = null;
     if (spotNow !== null && spotTicks.length) {
       const targetT = Date.now() - 60_000;
@@ -556,6 +586,8 @@ async function startApp() {
       lastTickAt: candleMeta.lastTickAt ? new Date(candleMeta.lastTickAt).toISOString() : null,
       tickCount: candleMeta.tickCount,
       lastUpdate: new Date().toISOString(),
+      chainlinkTickFresh,
+      spotTickFresh,
       // Live gate values for threshold comparison
       rsiNow: indicatorsData.rsiNow ?? null,
       rangePct20: indicatorsData.rangePct20 ?? null,

@@ -20,6 +20,8 @@ export const CONFIG = {
       process.env.COINBASE_REST_BASE_URL || 'https://api.exchange.coinbase.com',
     wsBaseUrl:
       process.env.COINBASE_WS_URL || 'wss://ws-feed.exchange.coinbase.com',
+    // Reject stale WS spot ticks so 1m impulse (delta) does not freeze on disconnect.
+    maxTickAgeMs: Number(process.env.COINBASE_MAX_TICK_AGE_MS) || 30_000,
   },
 
   // Polymarket API endpoints
@@ -68,6 +70,8 @@ export const CONFIG = {
     btcUsdAggregator:
       process.env.CHAINLINK_BTC_USD_AGGREGATOR ||
       '0xc907E116054Ad103354f2D350FD2514433D57F6f',
+    // Reject stale WS ticks and fall back to REST/provider prices.
+    maxTickAgeMs: Number(process.env.CHAINLINK_MAX_TICK_AGE_MS) || 30_000,
   },
 
   // Paper trading settings
